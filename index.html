@@ -15,7 +15,7 @@
 </head>
 <body>
 
-<!-- ---------- Auth screen ---------- -->
+<!-- ---------- Auth ---------- -->
 <div class="auth-screen" id="authScreen">
   <div class="auth-wrap">
     <div class="wordmark">
@@ -57,33 +57,43 @@
       <button data-type="manga">Manga</button>
     </div>
 
-    <ul class="status-list" id="statusList">
-      <li data-tracker="all"><button data-status="all" class="active"><span class="status-dot" style="background:var(--paper)"></span><span class="label">All</span><span class="count" id="count-all">0</span></button></li>
-      <li data-tracker="watching">
-        <button data-status="watching"><span class="status-dot"></span><span class="label">Watching</span><span class="count" id="count-watching">0</span></button>
-        <button class="tracker-eye" data-tracker-toggle="watching" title="Hide this tracker">👁</button>
-      </li>
-      <li data-tracker="completed">
-        <button data-status="completed"><span class="status-dot"></span><span class="label">Completed</span><span class="count" id="count-completed">0</span></button>
-        <button class="tracker-eye" data-tracker-toggle="completed" title="Hide this tracker">👁</button>
-      </li>
-      <li data-tracker="plan">
-        <button data-status="plan"><span class="status-dot"></span><span class="label">Plan to watch</span><span class="count" id="count-plan">0</span></button>
-        <button class="tracker-eye" data-tracker-toggle="plan" title="Hide this tracker">👁</button>
-      </li>
-      <li data-tracker="on_hold">
-        <button data-status="on_hold"><span class="status-dot"></span><span class="label">On hold</span><span class="count" id="count-on_hold">0</span></button>
-        <button class="tracker-eye" data-tracker-toggle="on_hold" title="Hide this tracker">👁</button>
-      </li>
-      <li data-tracker="dropped">
-        <button data-status="dropped"><span class="status-dot"></span><span class="label">Dropped</span><span class="count" id="count-dropped">0</span></button>
-        <button class="tracker-eye" data-tracker-toggle="dropped" title="Hide this tracker">👁</button>
-      </li>
-    </ul>
+    <div class="sidebar-scroll">
+      <ul class="status-list" id="statusList">
+        <li data-tracker="all"><button data-status="all" class="active"><span class="status-dot" style="background:var(--paper)"></span><span class="label">All</span><span class="count" id="count-all">0</span></button></li>
+        <li data-tracker="watching">
+          <button data-status="watching"><span class="status-dot"></span><span class="label">Watching</span><span class="count" id="count-watching">0</span></button>
+          <button class="tracker-eye" data-tracker-toggle="watching" title="Hide this tracker">👁</button>
+        </li>
+        <li data-tracker="completed">
+          <button data-status="completed"><span class="status-dot"></span><span class="label">Completed</span><span class="count" id="count-completed">0</span></button>
+          <button class="tracker-eye" data-tracker-toggle="completed" title="Hide this tracker">👁</button>
+        </li>
+        <li data-tracker="plan">
+          <button data-status="plan"><span class="status-dot"></span><span class="label">Plan to watch</span><span class="count" id="count-plan">0</span></button>
+          <button class="tracker-eye" data-tracker-toggle="plan" title="Hide this tracker">👁</button>
+        </li>
+        <li data-tracker="on_hold">
+          <button data-status="on_hold"><span class="status-dot"></span><span class="label">On hold</span><span class="count" id="count-on_hold">0</span></button>
+          <button class="tracker-eye" data-tracker-toggle="on_hold" title="Hide this tracker">👁</button>
+        </li>
+        <li data-tracker="dropped">
+          <button data-status="dropped"><span class="status-dot"></span><span class="label">Dropped</span><span class="count" id="count-dropped">0</span></button>
+          <button class="tracker-eye" data-tracker-toggle="dropped" title="Hide this tracker">👁</button>
+        </li>
+      </ul>
+
+      <div class="folder-section" id="folderSection" style="display:none">
+        <p class="sidebar-heading">Folders</p>
+        <ul class="folder-list" id="folderList"></ul>
+      </div>
+    </div>
 
     <div class="sidebar-footer">
       <button class="btn btn-glow" id="openAddModal">+ Add</button>
-      <button class="btn settings-open" id="openSettings"><span>⚙</span><span>Settings</span></button>
+      <div class="footer-row">
+        <button class="btn" id="surpriseBtn" title="Pick something at random from your backlog">🎲</button>
+        <button class="btn settings-open" id="openSettings"><span>⚙</span><span>Settings</span></button>
+      </div>
     </div>
   </aside>
 
@@ -94,7 +104,7 @@
     </div>
 
     <div class="controls">
-      <div class="search-wrap"><input id="librarySearch" type="text" placeholder="Search your shelf by title or tag..." /></div>
+      <div class="search-wrap"><input id="librarySearch" type="text" placeholder="Search your shelf by title, tag or folder..." /></div>
       <button class="btn" id="filterToggle">Filter</button>
       <div class="view-toggle">
         <button class="icon-btn active" id="viewGrid" title="Grid view">⊞</button>
@@ -122,7 +132,7 @@
   </main>
 </div>
 
-<!-- ---------- Search / Add modal ---------- -->
+<!-- ---------- Search / Add ---------- -->
 <div class="overlay" id="searchOverlay">
   <div class="modal holo" style="--glow:var(--accent)">
     <span class="bracket tl"></span><span class="bracket br"></span>
@@ -137,17 +147,17 @@
   </div>
 </div>
 
-<!-- ---------- Entry edit modal ---------- -->
+<!-- ---------- Add-entry form (new items only) ---------- -->
 <div class="overlay" id="entryOverlay">
   <div class="modal holo" style="--glow:var(--accent)">
     <span class="bracket tl"></span><span class="bracket br"></span>
     <div class="modal-header">
-      <h2 id="entryModalTitle">Edit entry</h2>
+      <h2>Add to your shelf</h2>
       <button class="icon-btn" id="closeEntry">&times;</button>
     </div>
 
     <div class="entry-form-head">
-      <img id="entryImg" src="" alt="" />
+      <img id="entryImg" src="" alt="" onerror="this.style.visibility='hidden'" />
       <div>
         <h3 id="entryTitle"></h3>
         <p id="entryMeta"></p>
@@ -183,10 +193,13 @@
     </div>
 
     <div class="field">
-      <div class="label-row">
-        <label for="entryTags">Tags (comma separated)</label>
-        <button type="button" class="mini-btn" id="refetchTagsBtn">⟳ from source</button>
-      </div>
+      <label for="entryFolder">Folder</label>
+      <input id="entryFolder" type="text" list="folderOptionsAdd" placeholder="Leave blank for unfiled" />
+      <datalist id="folderOptionsAdd"></datalist>
+    </div>
+
+    <div class="field">
+      <label for="entryTags">Tags (comma separated)</label>
       <input id="entryTags" type="text" placeholder="mecha, slice-of-life, comfort rewatch" />
     </div>
 
@@ -195,14 +208,13 @@
       <textarea id="entryNotes" placeholder="Anything you want to remember about this one..."></textarea>
     </div>
 
-    <div class="modal-actions">
-      <button class="btn btn-ghost" id="deleteEntryBtn">Remove from shelf</button>
-      <button class="btn btn-glow" id="saveEntryBtn">Save</button>
+    <div class="modal-actions" style="justify-content:flex-end">
+      <button class="btn btn-glow" id="saveEntryBtn">Add to shelf</button>
     </div>
   </div>
 </div>
 
-<!-- ---------- Settings overlay ---------- -->
+<!-- ---------- Settings ---------- -->
 <div class="overlay" id="settingsOverlay">
   <div class="modal holo" style="--glow:var(--accent)">
     <span class="bracket tl"></span><span class="bracket br"></span>
@@ -215,13 +227,36 @@
     </div>
 
     <div class="settings-section">
+      <h3>Import from Mihon / Tachiyomi</h3>
+      <div class="data-actions">
+        <button class="btn btn-ghost" id="mihonBtn">Choose a .tachibk backup</button>
+        <input type="file" id="mihonFile" accept=".tachibk,.gz,.proto.gz,application/octet-stream,application/gzip" style="display:none" />
+        <button class="btn btn-ghost" id="enrichBtn">Fetch covers &amp; details</button>
+      </div>
+      <p class="settings-hint">Backups bring your categories across as folders and keep your reading position. Run "Fetch covers &amp; details" afterwards to pull artwork, tags and chapter totals from MyAnimeList.</p>
+    </div>
+
+    <div class="settings-section">
       <h3>Data</h3>
       <div class="data-actions">
-        <button class="btn btn-ghost" id="exportBtn">Export</button>
-        <button class="btn btn-ghost" id="importBtn">Import</button>
+        <button class="btn btn-ghost" id="exportBtn">Export JSON</button>
+        <button class="btn btn-ghost" id="importBtn">Import JSON</button>
         <input type="file" id="importFile" accept="application/json" style="display:none" />
         <button class="btn btn-ghost" id="signOutBtn">Sign out</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ---------- Mihon import preview ---------- -->
+<div class="overlay" id="mihonOverlay">
+  <div class="modal holo" style="--glow:var(--accent); max-width:620px;">
+    <span class="bracket tl"></span><span class="bracket br"></span>
+    <div class="modal-header"><h2>Import from Mihon</h2><button class="icon-btn" id="closeMihon">&times;</button></div>
+    <div id="mihonSummary"></div>
+    <div id="mihonPreview" class="mihon-preview"></div>
+    <div class="modal-actions" style="justify-content:flex-end">
+      <button class="btn btn-glow" id="mihonConfirm" disabled>Import</button>
     </div>
   </div>
 </div>
@@ -246,50 +281,142 @@
       </div>
     </header>
 
-    <div class="detail-body">
-      <div class="detail-main">
-        <section class="d-block">
-          <h4>Progress</h4>
-          <div class="prog-wrap">
-            <div class="prog-readout">
-              <b id="progNow">0</b><span id="progTotal"></span>
-              <em id="progUnit">episodes</em>
+    <nav class="detail-tabs" id="detailTabs">
+      <button data-tab="overview" class="active">Overview</button>
+      <button data-tab="gallery">Artwork</button>
+      <button data-tab="characters">Characters</button>
+      <button data-tab="edit">Edit</button>
+    </nav>
+
+    <div class="detail-body" id="detailBody">
+
+      <!-- Overview -->
+      <div class="detail-tabpane visible" data-pane="overview">
+        <div class="detail-main">
+          <section class="d-block">
+            <h4>Progress</h4>
+            <div class="prog-wrap">
+              <div class="prog-readout">
+                <b id="progNow">0</b><span id="progTotal"></span>
+                <em id="progUnit">episodes</em>
+              </div>
+              <div class="prog-buttons">
+                <button class="icon-btn" id="progMinus" title="Back one">−</button>
+                <button class="icon-btn" id="progPlus" title="Forward one">+</button>
+                <button class="btn btn-ghost" id="progComplete">Mark complete</button>
+              </div>
             </div>
-            <div class="prog-buttons">
-              <button class="icon-btn" id="progMinus" title="Back one">−</button>
-              <button class="icon-btn" id="progPlus" title="Forward one">+</button>
-              <button class="btn btn-ghost" id="progComplete">Mark complete</button>
+            <div class="prog-bar"><div id="progFill"></div></div>
+            <p class="prog-pct" id="progPct"></p>
+          </section>
+
+          <section class="d-block" id="trailerBlock" style="display:none">
+            <h4>Trailer</h4>
+            <div class="trailer-frame">
+              <iframe id="trailerFrame" title="Trailer" allow="accelerometer; encrypted-media; picture-in-picture" allowfullscreen loading="lazy"></iframe>
             </div>
-          </div>
-          <div class="prog-bar"><div id="progFill"></div></div>
-          <p class="prog-pct" id="progPct"></p>
-        </section>
+          </section>
 
-        <section class="d-block">
-          <h4>Synopsis</h4>
-          <p class="detail-synopsis" id="detailSynopsis"></p>
-        </section>
+          <section class="d-block">
+            <h4>Synopsis</h4>
+            <p class="detail-synopsis" id="detailSynopsis"></p>
+          </section>
 
-        <section class="d-block">
-          <h4>My notes</h4>
-          <p class="detail-notes" id="detailNotes"></p>
-        </section>
+          <section class="d-block" id="relatedBlock" style="display:none">
+            <h4>Related</h4>
+            <div class="related-list" id="relatedList"></div>
+          </section>
 
-        <section class="d-block">
-          <h4>Tags</h4>
-          <div class="detail-tags" id="detailTags"></div>
-        </section>
+          <section class="d-block">
+            <h4>My notes</h4>
+            <p class="detail-notes" id="detailNotes"></p>
+          </section>
+
+          <section class="d-block">
+            <h4>Tags</h4>
+            <div class="detail-tags" id="detailTags"></div>
+          </section>
+        </div>
+
+        <aside class="detail-side">
+          <div class="stat-grid" id="detailStatGrid"></div>
+          <div class="detail-facts" id="detailFacts"></div>
+          <div class="detail-links" id="detailLinks"></div>
+        </aside>
       </div>
 
-      <aside class="detail-side">
-        <div class="stat-grid" id="detailStatGrid"></div>
-        <div class="detail-facts" id="detailFacts"></div>
-        <div class="detail-links" id="detailLinks"></div>
-        <div class="detail-actions">
-          <button class="btn btn-glow" id="detailEditBtn">Edit entry</button>
-          <button class="btn btn-ghost" id="detailDeleteBtn">Remove from shelf</button>
+      <!-- Artwork -->
+      <div class="detail-tabpane" data-pane="gallery">
+        <div class="detail-main">
+          <div class="gallery-grid" id="galleryGrid"></div>
         </div>
-      </aside>
+      </div>
+
+      <!-- Characters -->
+      <div class="detail-tabpane" data-pane="characters">
+        <div class="detail-main">
+          <div class="char-grid" id="charGrid"></div>
+        </div>
+      </div>
+
+      <!-- Edit -->
+      <div class="detail-tabpane" data-pane="edit">
+        <div class="detail-main">
+          <div class="edit-form">
+            <div class="field">
+              <label for="edTitle">Title</label>
+              <input id="edTitle" type="text" />
+            </div>
+            <div class="form-row">
+              <div class="field">
+                <label for="edStatus">Status</label>
+                <select id="edStatus">
+                  <option value="watching">Watching</option>
+                  <option value="completed">Completed</option>
+                  <option value="plan">Plan to watch</option>
+                  <option value="on_hold">On hold</option>
+                  <option value="dropped">Dropped</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="edScore">Score (0–10)</label>
+                <input id="edScore" type="number" min="0" max="10" step="1" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="field">
+                <label for="edProgress">Progress</label>
+                <input id="edProgress" type="number" min="0" step="1" />
+              </div>
+              <div class="field">
+                <label for="edTotal">Total</label>
+                <input id="edTotal" type="number" min="0" step="1" />
+              </div>
+            </div>
+            <div class="field">
+              <label for="edFolder">Folder</label>
+              <input id="edFolder" type="text" list="folderOptions" placeholder="Leave blank for unfiled" />
+              <datalist id="folderOptions"></datalist>
+            </div>
+            <div class="field">
+              <div class="label-row">
+                <label for="edTags">Tags (comma separated)</label>
+                <button type="button" class="mini-btn" id="edRefetchTags">⟳ from source</button>
+              </div>
+              <input id="edTags" type="text" />
+            </div>
+            <div class="field">
+              <label for="edNotes">Notes</label>
+              <textarea id="edNotes" placeholder="Anything you want to remember about this one..."></textarea>
+            </div>
+            <div class="edit-actions">
+              <button class="btn btn-ghost" id="edDelete">Remove from shelf</button>
+              <button class="btn btn-glow" id="edSave">Save changes</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -298,6 +425,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 <script src="config.js" defer></script>
+<script src="mihon.js" defer></script>
 <script src="app.js" defer></script>
 </body>
 </html>
