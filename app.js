@@ -1,13 +1,20 @@
 // ---------------------------------------------------------------------------
 // Omoidebako — personal anime & manga log
 // Data lives in Supabase (your own free project, see README.md for setup).
-// Metadata comes from the Jikan API (a free, public MyAnimeList API).
+// Metadata comes from the Jikan API (a free, public MyAnimeList API) plus
+// AniList / Kitsu / MangaDex as fallbacks.
 // ---------------------------------------------------------------------------
 
 const STATUS_LABELS = {
   anime: { watching: "Watching", completed: "Completed", plan: "Plan to watch", on_hold: "On hold", dropped: "Dropped" },
   manga: { watching: "Reading", completed: "Completed", plan: "Plan to read", on_hold: "On hold", dropped: "Dropped" },
 };
+const MEDIA_LABEL = { anime: "Anime", manga: "Manga" };
+const STATUS_COLOR = { watching: "var(--cyan)", completed: "var(--green)", plan: "var(--violet)", on_hold: "var(--amber)", dropped: "var(--magenta)" };
+const THEME_COLORS = { cyan: "var(--cyan)", green: "var(--green)", amber: "var(--amber)", magenta: "var(--magenta)", violet: "var(--violet)", red: "var(--red)", blue: "var(--blue)" };
+const THEME_HEX = { cyan: "#00E9FF", green: "#3CFF8A", amber: "#FFB020", magenta: "#FF2E7A", violet: "#B14EFF", red: "#FF4545", blue: "#4D8CFF" };
+const ALL_TRACKERS = ["watching", "completed", "plan", "on_hold", "dropped"];
+const PREFS_KEY = "omoidebako:prefs:v1";
 
 const state = {
   supabase: null,
@@ -16,8 +23,17 @@ const state = {
   entries: [],
   mediaType: "anime",
   statusFilter: "all",
-  editingId: null,   // id of entry being edited, or null when creating
-  pendingResult: null, // search result chosen but not yet saved
+  editingId: null,      // id of entry being edited, or null when creating
+  pendingResult: null,  // search result chosen but not yet saved
+  detailId: null,       // id of entry currently open in the detail overlay
+
+  // UI preferences (persisted to localStorage — no backend changes needed)
+  theme: { anime: "cyan", manga: "magenta" },
+  enabledTrackers: new Set(ALL_TRACKERS),
+  view: "grid",
+  sort: "recent",
+  librarySearch: "",
+  activeTags: new Set(),
 };
 
 const $ = (id) => document.getElementById(id);
@@ -31,17 +47,41 @@ function toast(msg) {
 }
 
 // ---------------------------------------------------------------------------
+// Preferences (theme, hidden trackers, view mode)
+// ---------------------------------------------------------------------------
+function loadPrefs() {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (!raw) return;
+    const prefs = JSON.parse(raw);
+    if (prefs.theme) state.theme = { ...state.theme, ...prefs.theme };
+    if (Array.isArray(prefs.enabledTrackers)) state.enabledTrackers = new Set(prefs.enabledTrackers);
+    if (prefs.view === "grid" || prefs.view === "list") state.view = prefs.view;
+  } catch {
+    // ignore malformed prefs
+  }
+}
+function savePrefs() {
+  localStorage.setItem(PREFS_KEY, JSON.stringify({
+    theme: state.theme,
+    enabledTrackers: [...state.enabledTrackers],
+    view: state.view,
+  }));
+}
+
+// ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
 async function boot() {
   if (!window.SUPABASE_URL || window.SUPABASE_URL.startsWith("PASTE_")) {
     document.body.innerHTML =
-      '<div class="auth-screen"><div class="auth-card"><p class="auth-mark">Omoidebako</p>' +
-      '<p class="auth-sub">config.js still has placeholder values. Open config.js and paste in ' +
-      "your Supabase project URL and anon key (see README.md), then reload.</p></div></div>";
+      '<div class="auth-screen"><div class="auth-wrap" style="grid-template-columns:1fr;max-width:480px;">' +
+      '<div class="wordmark"><h1>OMOIDE<span>BAKO</span></h1><p class="auth-sub">config.js still has placeholder ' +
+      "values. Open config.js and paste in your Supabase project URL and anon key (see README.md), then reload.</p></div></div></div>";
     return;
   }
 
+  loadPrefs();
   state.supabase = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
 
   if ("serviceWorker" in navigator) {
@@ -50,6 +90,9 @@ async function boot() {
 
   wireAuthUI();
   wireAppUI();
+  applyAccent();
+  renderSwatches();
+  applyTrackerVisibility();
 
   const { data } = await state.supabase.auth.getSession();
   state.session = data.session;
@@ -64,7 +107,7 @@ async function boot() {
 
 function updateAuthVisibility() {
   const signedIn = !!state.session;
-  $("authScreen").style.display = signedIn ? "none" : "flex";
+  $("authScreen").classList.toggle("hidden", signedIn);
   $("app").classList.toggle("visible", signedIn);
 }
 
@@ -114,25 +157,57 @@ function wireAuthUI() {
 // App UI wiring
 // ---------------------------------------------------------------------------
 function wireAppUI() {
-  document.querySelectorAll(".type-switch button").forEach((btn) => {
+  // type switch
+  document.querySelectorAll("#typeSwitch button[data-type]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      document.querySelectorAll(".type-switch button").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
+      if (btn.dataset.type === state.mediaType) return;
       state.mediaType = btn.dataset.type;
-      applyStatusLabels();
+      state.statusFilter = "all";
+      state.activeTags.clear();
+      state.librarySearch = "";
+      $("librarySearch").value = "";
+      $("typeSwitch").dataset.active = state.mediaType;
+      document.querySelectorAll("#typeSwitch button[data-type]").forEach((b) => b.classList.toggle("active", b === btn));
+      document.querySelectorAll("#statusList button[data-status]").forEach((b) => b.classList.toggle("active", b.dataset.status === "all"));
+      applyAccent();
       loadEntries();
     });
   });
 
+  // status filter (event delegation, ignore the eye buttons)
   $("statusList").addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-status]");
     if (!btn) return;
-    document.querySelectorAll("#statusList button").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll("#statusList button[data-status]").forEach((b) => b.classList.remove("active"));
     btn.classList.add("active");
     state.statusFilter = btn.dataset.status;
     renderGrid();
   });
 
+  // tracker show/hide eyes
+  document.querySelectorAll(".tracker-eye").forEach((eye) => {
+    eye.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const status = eye.dataset.trackerToggle;
+      const li = eye.closest("li");
+      const nowHidden = state.enabledTrackers.has(status);
+      if (nowHidden) {
+        state.enabledTrackers.delete(status);
+      } else {
+        state.enabledTrackers.add(status);
+      }
+      li.classList.toggle("tracker-hidden", nowHidden);
+      eye.title = nowHidden ? "Show this tracker" : "Hide this tracker";
+      if (nowHidden && state.statusFilter === status) {
+        state.statusFilter = "all";
+        document.querySelectorAll("#statusList button[data-status]").forEach((b) => b.classList.toggle("active", b.dataset.status === "all"));
+        renderGrid();
+      }
+      savePrefs();
+    });
+  });
+
+  // add modal
   $("openAddModal").addEventListener("click", () => openSearchModal());
   $("closeSearch").addEventListener("click", () => $("searchOverlay").classList.remove("visible"));
   $("searchOverlay").addEventListener("click", (e) => {
@@ -150,6 +225,7 @@ function wireAppUI() {
     debounceTimer = setTimeout(() => runSearch(q), 350);
   });
 
+  // entry modal
   $("closeEntry").addEventListener("click", closeEntryModal);
   $("entryOverlay").addEventListener("click", (e) => {
     if (e.target.id === "entryOverlay") closeEntryModal();
@@ -157,34 +233,111 @@ function wireAppUI() {
   $("saveEntryBtn").addEventListener("click", saveEntry);
   $("deleteEntryBtn").addEventListener("click", deleteEntry);
 
+  // settings
+  $("openSettings").addEventListener("click", () => $("settingsOverlay").classList.add("visible"));
+  $("closeSettings").addEventListener("click", () => $("settingsOverlay").classList.remove("visible"));
+  $("settingsOverlay").addEventListener("click", (e) => {
+    if (e.target.id === "settingsOverlay") $("settingsOverlay").classList.remove("visible");
+  });
   $("signOutBtn").addEventListener("click", async () => {
     await state.supabase.auth.signOut();
   });
-
   $("exportBtn").addEventListener("click", exportLibrary);
   $("importBtn").addEventListener("click", () => $("importFile").click());
   $("importFile").addEventListener("change", importLibrary);
 
+  // detail overlay
+  $("closeDetail").addEventListener("click", () => $("detailOverlay").classList.remove("visible"));
+  $("detailOverlay").addEventListener("click", (e) => {
+    if (e.target.id === "detailOverlay") $("detailOverlay").classList.remove("visible");
+  });
+  $("detailEditBtn").addEventListener("click", () => {
+    $("detailOverlay").classList.remove("visible");
+    if (state.detailId) openEntryModal(state.detailId);
+  });
+
+  // library search / sort / filter panel
+  $("librarySearch").addEventListener("input", (e) => {
+    state.librarySearch = e.target.value;
+    renderGrid();
+  });
+  $("sortSelect").addEventListener("change", (e) => {
+    state.sort = e.target.value;
+    renderGrid();
+  });
+  $("filterToggle").addEventListener("click", () => {
+    $("filterPanel").classList.toggle("open");
+  });
+
+  // grid / list view
+  $("viewGrid").addEventListener("click", () => {
+    state.view = "grid";
+    $("viewGrid").classList.add("active");
+    $("viewList").classList.remove("active");
+    savePrefs();
+    renderGrid();
+  });
+  $("viewList").addEventListener("click", () => {
+    state.view = "list";
+    $("viewList").classList.add("active");
+    $("viewGrid").classList.remove("active");
+    savePrefs();
+    renderGrid();
+  });
+
   applyStatusLabels();
+}
+
+function applyTrackerVisibility() {
+  document.querySelectorAll("#statusList li[data-tracker]").forEach((li) => {
+    const status = li.dataset.tracker;
+    if (status === "all") return;
+    const hidden = !state.enabledTrackers.has(status);
+    li.classList.toggle("tracker-hidden", hidden);
+    const eye = li.querySelector(".tracker-eye");
+    if (eye) eye.title = hidden ? "Show this tracker" : "Hide this tracker";
+  });
+}
+
+function applyAccent() {
+  document.documentElement.style.setProperty("--accent", THEME_COLORS[state.theme[state.mediaType]]);
+}
+
+function renderSwatches() {
+  document.querySelectorAll(".swatches").forEach((wrap) => {
+    const target = wrap.dataset.themeTarget;
+    wrap.innerHTML = Object.keys(THEME_HEX).map((name) =>
+      `<span class="swatch ${state.theme[target] === name ? "selected" : ""}" data-theme-name="${name}" data-theme-target-color="${target}" style="background:${THEME_HEX[name]}; color:${THEME_HEX[name]}"></span>`
+    ).join("");
+  });
+  document.querySelectorAll(".swatch").forEach((sw) => {
+    sw.addEventListener("click", () => {
+      const target = sw.dataset.themeTargetColor;
+      state.theme[target] = sw.dataset.themeName;
+      savePrefs();
+      renderSwatches();
+      if (target === state.mediaType) {
+        applyAccent();
+        renderGrid();
+      }
+    });
+  });
 }
 
 function applyStatusLabels() {
   const labels = STATUS_LABELS[state.mediaType];
-  document.querySelectorAll("#statusList button[data-status]").forEach((btn) => {
-    const status = btn.dataset.status;
+  document.querySelectorAll("#statusList li[data-tracker]").forEach((li) => {
+    const status = li.dataset.tracker;
     if (status === "all") return;
-    const countSpan = btn.querySelector(".count");
-    btn.firstChild.textContent = labels[status];
-    btn.appendChild(countSpan);
+    const labelSpan = li.querySelector(".label");
+    if (labelSpan) labelSpan.textContent = labels[status];
   });
-  // form status dropdown labels
   const sel = $("entryStatus");
   [...sel.options].forEach((opt) => {
     if (labels[opt.value]) opt.textContent = labels[opt.value];
   });
-  $("mainSubtitle").parentElement.firstChild.textContent =
-    (state.statusFilter === "all" ? "All " : labels[state.statusFilter] + " ") +
-    (state.mediaType === "anime" ? "anime" : "manga");
+  $("mainTitle").textContent =
+    (state.statusFilter === "all" ? "All " : labels[state.statusFilter] + " ") + MEDIA_LABEL[state.mediaType];
 }
 
 // ---------------------------------------------------------------------------
@@ -201,8 +354,9 @@ async function loadEntries() {
     toast("Couldn't load your library: " + error.message);
     return;
   }
-  state.entries = data || [];
+  state.entries = (data || []).map((e) => ({ ...e, tags: e.tags || [] }));
   renderCounts();
+  renderTagChips();
   renderGrid();
 }
 
@@ -215,37 +369,106 @@ function renderCounts() {
   });
 }
 
+function renderTagChips() {
+  const freq = {};
+  state.entries.forEach((e) => (e.tags || []).forEach((t) => { freq[t] = (freq[t] || 0) + 1; }));
+  const sorted = Object.keys(freq).sort((a, b) => freq[b] - freq[a] || a.localeCompare(b));
+  const wrap = $("tagChips");
+  wrap.innerHTML = sorted.map((t) =>
+    `<button class="tag-chip ${state.activeTags.has(t) ? "active" : ""}" data-tag="${escapeAttr(t)}">${escapeHtml(t)}</button>`
+  ).join("");
+
+  // Tag chips are sorted by usage, most-used first — trim whatever doesn't
+  // fit inside the panel instead of wrapping indefinitely.
+  requestAnimationFrame(() => {
+    const limit = wrap.clientHeight;
+    [...wrap.querySelectorAll(".tag-chip")].forEach((chip) => {
+      if (chip.offsetTop + chip.offsetHeight > limit + 2) chip.remove();
+    });
+  });
+
+  wrap.querySelectorAll(".tag-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const t = chip.dataset.tag;
+      state.activeTags.has(t) ? state.activeTags.delete(t) : state.activeTags.add(t);
+      renderTagChips();
+      renderGrid();
+    });
+  });
+}
+
+function currentList() {
+  let list = state.statusFilter === "all" ? state.entries : state.entries.filter((e) => e.status === state.statusFilter);
+
+  if (state.librarySearch.trim()) {
+    const q = state.librarySearch.trim().toLowerCase();
+    list = list.filter((e) => e.title.toLowerCase().includes(q) || (e.tags || []).some((t) => t.toLowerCase().includes(q)));
+  }
+  if (state.activeTags.size) {
+    list = list.filter((e) => (e.tags || []).some((t) => state.activeTags.has(t)));
+  }
+  if (state.sort !== "recent") {
+    list = [...list].sort((a, b) => {
+      if (state.sort === "score") return (b.score || 0) - (a.score || 0);
+      if (state.sort === "progress") return (b.progress || 0) - (a.progress || 0);
+      return a.title.localeCompare(b.title);
+    });
+  }
+  return list;
+}
+
+function coverStyle(e) {
+  if (e.image_url) return `background-image:url('${escapeAttr(e.image_url)}')`;
+  const color = STATUS_COLOR[e.status];
+  let hash = 0;
+  for (const ch of e.title || "x") hash = (hash * 31 + ch.charCodeAt(0)) | 0;
+  const hue = Math.abs(hash) % 360;
+  return `background:
+    radial-gradient(circle at 30% 20%, rgba(255,255,255,.08), transparent 60%),
+    repeating-linear-gradient(135deg, ${color} 0 1px, transparent 1px 18px),
+    radial-gradient(circle, rgba(255,255,255,.08) 1px, transparent 1.4px),
+    linear-gradient(160deg, hsl(${hue} 30% 8%), #000);
+    background-size:cover,auto,6px 6px,auto;`;
+}
+
 function renderGrid() {
   applyStatusLabels();
-  const list =
-    state.statusFilter === "all" ? state.entries : state.entries.filter((e) => e.status === state.statusFilter);
+  const list = currentList();
+  $("mainCount").textContent = list.length;
 
   const wrap = $("gridWrap");
   if (list.length === 0) {
-    wrap.innerHTML =
-      '<div class="empty-state"><h3>Nothing here yet</h3><p>Use "+ Add" to search titles and start your shelf.</p></div>';
+    wrap.innerHTML = '<div class="empty-state"><h3>Nothing here yet</h3><p>Use "+ Add" to search titles and start your shelf.</p></div>';
     return;
   }
 
-  wrap.innerHTML = '<div class="grid">' +
+  const labels = STATUS_LABELS[state.mediaType];
+  wrap.innerHTML = `<div class="grid ${state.view === "list" ? "list-mode" : ""}" id="grid">` +
     list.map((e) => {
+      const color = STATUS_COLOR[e.status];
       const pct = e.total_units ? Math.min(100, Math.round((e.progress / e.total_units) * 100)) : 0;
+      const metaLine = e.total_units ? `${e.progress || 0}/${e.total_units}` : (e.progress ? `${e.progress}` : "not started");
+      const scoreLine = e.score ? `score ${e.score}` : "—";
       return `
-        <div class="card" data-id="${e.id}">
-          <div class="card-cover" style="background-image:url('${escapeAttr(e.image_url || "")}')">
+        <div class="card holo" style="--glow:${color}" data-id="${e.id}">
+          <div class="card-cover" style="${coverStyle(e)}">
+            <div class="scan"></div>
+            <div class="card-badge" style="--glow:${color}">${labels[e.status]}</div>
             ${e.score ? `<span class="card-score">★ ${e.score}</span>` : ""}
+            <div class="card-reveal"><span>${metaLine}</span><span>${scoreLine}</span></div>
           </div>
           <div class="card-body">
             <p class="card-title">${escapeHtml(e.title)}</p>
-            <p class="card-progress">${e.progress || 0}${e.total_units ? " / " + e.total_units : ""}</p>
-            ${e.total_units ? `<div class="card-progress-bar"><div style="width:${pct}%"></div></div>` : ""}
+            <div class="card-meta"><span>${metaLine}</span><span>${labels[e.status]}</span></div>
+            <div class="list-meta"><span>${metaLine}</span><span>${scoreLine}</span></div>
+            ${e.total_units ? `<div class="card-progress-bar" style="--glow:${color}"><div style="width:${pct}%"></div></div>` : ""}
           </div>
         </div>`;
     }).join("") +
     "</div>";
 
   wrap.querySelectorAll(".card").forEach((card) => {
-    card.addEventListener("click", () => openEntryModal(card.dataset.id));
+    card.addEventListener("click", () => openDetail(card.dataset.id));
   });
 }
 
@@ -253,6 +476,39 @@ function escapeHtml(s) {
   return (s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 function escapeAttr(s) { return escapeHtml(s).replace(/'/g, "&#39;"); }
+
+// ---------------------------------------------------------------------------
+// Detail overlay (read view — cover, stats, tags, MAL/MangaDex links)
+// ---------------------------------------------------------------------------
+function openDetail(id) {
+  const e = state.entries.find((x) => String(x.id) === String(id));
+  if (!e) return;
+  state.detailId = e.id;
+  const color = STATUS_COLOR[e.status];
+  const labels = STATUS_LABELS[state.mediaType];
+
+  $("detailPanel").style.setProperty("--glow", color);
+  $("detailKicker").textContent = MEDIA_LABEL[state.mediaType].toUpperCase();
+  $("detailCover").setAttribute("style", `--glow:${color}; ${coverStyle(e)}`);
+  $("detailTitle").textContent = e.title;
+  $("detailSub").textContent = MEDIA_LABEL[state.mediaType];
+  $("detailProgress").textContent = e.total_units ? `${e.progress || 0}/${e.total_units}` : (e.progress || "0");
+  $("detailScore").textContent = e.score || "—";
+  $("detailStatus").textContent = labels[e.status];
+  $("detailTags").innerHTML = (e.tags || []).map((t) => `<span>${escapeHtml(t)}</span>`).join("") || "<span>no tags yet</span>";
+
+  const q = encodeURIComponent(e.title);
+  const malLink = e.mal_id
+    ? `https://myanimelist.net/${state.mediaType}/${e.mal_id}`
+    : `https://myanimelist.net/search/all?q=${q}`;
+  let links = `<a href="${malLink}" target="_blank" rel="noopener">MyAnimeList ↗</a>`;
+  if (state.mediaType === "manga") {
+    links += `<a href="https://mangadex.org/search?q=${q}" target="_blank" rel="noopener">MangaDex ↗</a>`;
+  }
+  $("detailLinks").innerHTML = links;
+
+  $("detailOverlay").classList.add("visible");
+}
 
 // ---------------------------------------------------------------------------
 // Search — sweeps several free, keyless APIs in parallel and shows each
@@ -369,7 +625,7 @@ let searchResultIndex = {}; // extId -> normalized item, for click lookups
 
 async function runSearch(query) {
   const resultsEl = $("searchResults");
-  resultsEl.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:8px;">Searching...</p>';
+  resultsEl.innerHTML = '<p style="color:var(--paper-dim);font-size:13px;padding:8px;">Searching...</p>';
 
   const fetchers = SEARCH_SOURCES[state.mediaType];
   const settled = await Promise.allSettled(fetchers.map((fn) => fn(query, state.mediaType)));
@@ -390,7 +646,7 @@ function renderSearchSections(sections, failedCount, totalCount) {
     resultsEl.innerHTML =
       failedCount === totalCount
         ? '<p style="color:var(--red);font-size:13px;padding:8px;">All sources failed to respond. Try again in a moment.</p>'
-        : '<p style="color:var(--muted);font-size:13px;padding:8px;">No results.</p>';
+        : '<p style="color:var(--paper-dim);font-size:13px;padding:8px;">No results.</p>';
     return;
   }
 
@@ -441,6 +697,7 @@ function pickSearchResult(item) {
   $("entryProgress").value = 0;
   $("entryTotal").value = item.units || "";
   $("entryTotal").disabled = !!item.units;
+  $("entryTags").value = "";
   $("entryNotes").value = "";
   $("deleteEntryBtn").style.display = "none";
 
@@ -451,7 +708,7 @@ function pickSearchResult(item) {
 // Entry modal: edit existing
 // ---------------------------------------------------------------------------
 function openEntryModal(id) {
-  const entry = state.entries.find((e) => e.id === id);
+  const entry = state.entries.find((e) => String(e.id) === String(id));
   if (!entry) return;
   state.editingId = id;
   state.pendingResult = null;
@@ -465,6 +722,7 @@ function openEntryModal(id) {
   $("entryProgress").value = entry.progress ?? 0;
   $("entryTotal").value = entry.total_units ?? "";
   $("entryTotal").disabled = entry.total_units != null;
+  $("entryTags").value = (entry.tags || []).join(", ");
   $("entryNotes").value = entry.notes || "";
   $("deleteEntryBtn").style.display = "inline-flex";
 
@@ -477,6 +735,13 @@ function closeEntryModal() {
   state.pendingResult = null;
 }
 
+function parseTags() {
+  return $("entryTags").value
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
 async function saveEntry() {
   const status = $("entryStatus").value;
   const score = $("entryScore").value === "" ? null : Number($("entryScore").value);
@@ -484,13 +749,14 @@ async function saveEntry() {
   const totalRaw = $("entryTotal").value;
   const total_units = totalRaw === "" ? null : Number(totalRaw);
   const notes = $("entryNotes").value.trim() || null;
+  const tags = parseTags();
 
   $("saveEntryBtn").disabled = true;
   try {
     if (state.editingId) {
       const { error } = await state.supabase
         .from("entries")
-        .update({ status, score, progress, total_units, notes })
+        .update({ status, score, progress, total_units, notes, tags })
         .eq("id", state.editingId);
       if (error) throw error;
       toast("Saved.");
@@ -502,7 +768,7 @@ async function saveEntry() {
         mal_id: item.malId,
         title: item.title,
         image_url: item.image || null,
-        status, score, progress, total_units, notes,
+        status, score, progress, total_units, notes, tags,
       });
       if (error) throw error;
       toast("Added to your shelf.");
@@ -563,6 +829,7 @@ async function importLibrary(e) {
       progress: r.progress ?? 0,
       total_units: r.total_units ?? null,
       notes: r.notes ?? null,
+      tags: Array.isArray(r.tags) ? r.tags : [],
     }));
     const { error } = await state.supabase.from("entries").insert(cleaned);
     if (error) throw error;
