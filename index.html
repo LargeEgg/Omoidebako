@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Omoidebako — My Anime & Manga Log</title>
+<meta name="description" content="A personal, portable log of every anime and manga you've watched or read." />
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#14161F" />
+<link rel="icon" href="icon-192.png" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ---------- Auth screen ---------- -->
+<div class="auth-screen" id="authScreen">
+  <div class="auth-card">
+    <p class="auth-mark">Omoidebako</p>
+    <p class="auth-sub">Your personal anime &amp; manga log. Sign in to sync it across every device.</p>
+
+    <div class="field">
+      <label for="authEmail">Email</label>
+      <input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" />
+    </div>
+    <div class="field">
+      <label for="authPassword">Password</label>
+      <input id="authPassword" type="password" autocomplete="current-password" placeholder="At least 6 characters" />
+    </div>
+    <p class="auth-error" id="authError"></p>
+
+    <button class="btn btn-primary" id="authSubmit">Sign in</button>
+
+    <p class="auth-toggle">
+      <span id="authToggleText">New here?</span>
+      <button id="authToggleBtn" type="button">Create an account</button>
+    </p>
+
+    <p class="auth-note">
+      Your data is stored in your own free Supabase project and protected so only
+      you can read or write it. See the README for one-time setup.
+    </p>
+  </div>
+</div>
+
+<!-- ---------- App shell ---------- -->
+<div class="app" id="app">
+  <aside class="sidebar">
+    <p class="brand">Omoidebako</p>
+
+    <div class="type-switch">
+      <button data-type="anime" class="active">Anime</button>
+      <button data-type="manga">Manga</button>
+    </div>
+
+    <ul class="status-list" id="statusList">
+      <li><button data-status="all" class="active">All <span class="count" id="count-all">0</span></button></li>
+      <li><button data-status="watching">Watching <span class="count" id="count-watching">0</span></button></li>
+      <li><button data-status="completed">Completed <span class="count" id="count-completed">0</span></button></li>
+      <li><button data-status="plan">Plan to watch <span class="count" id="count-plan">0</span></button></li>
+      <li><button data-status="on_hold">On hold <span class="count" id="count-on_hold">0</span></button></li>
+      <li><button data-status="dropped">Dropped <span class="count" id="count-dropped">0</span></button></li>
+    </ul>
+
+    <div class="sidebar-footer">
+      <button class="btn btn-primary" id="openAddModal" style="width:100%">+ Add</button>
+      <button class="btn btn-ghost" id="exportBtn">Export</button>
+      <button class="btn btn-ghost" id="importBtn">Import</button>
+      <input type="file" id="importFile" accept="application/json" style="display:none" />
+      <button class="btn btn-ghost" id="signOutBtn">Sign out</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="main-header">
+      <div>
+        <h1 class="main-title" id="mainTitle">All anime<span id="mainSubtitle">0 entries</span></h1>
+      </div>
+    </div>
+
+    <div id="gridWrap"></div>
+  </main>
+</div>
+
+<!-- ---------- Search / Add modal ---------- -->
+<div class="overlay" id="searchOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Add to your shelf</h2>
+      <button class="icon-btn" id="closeSearch">&times;</button>
+    </div>
+    <div class="field">
+      <input id="searchInput" type="text" placeholder="Search anime or manga titles..." autocomplete="off" />
+    </div>
+    <div class="search-results" id="searchResults"></div>
+  </div>
+</div>
+
+<!-- ---------- Entry edit modal ---------- -->
+<div class="overlay" id="entryOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="entryModalTitle">Edit entry</h2>
+      <button class="icon-btn" id="closeEntry">&times;</button>
+    </div>
+
+    <div class="entry-form-head">
+      <img id="entryImg" src="" alt="" />
+      <div>
+        <h3 id="entryTitle"></h3>
+        <p id="entryMeta"></p>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="field">
+        <label for="entryStatus">Status</label>
+        <select id="entryStatus">
+          <option value="watching">Watching</option>
+          <option value="completed">Completed</option>
+          <option value="plan">Plan to watch</option>
+          <option value="on_hold">On hold</option>
+          <option value="dropped">Dropped</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="entryScore">Score (0–10)</label>
+        <input id="entryScore" type="number" min="0" max="10" step="1" />
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="field">
+        <label for="entryProgress">Progress</label>
+        <input id="entryProgress" type="number" min="0" step="1" />
+      </div>
+      <div class="field">
+        <label for="entryTotal">Total (if known)</label>
+        <input id="entryTotal" type="number" min="0" step="1" disabled />
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="entryNotes">Notes</label>
+      <textarea id="entryNotes" placeholder="Anything you want to remember about this one..."></textarea>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="deleteEntryBtn">Remove from shelf</button>
+      <button class="btn btn-primary" id="saveEntryBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="config.js" defer></script>
+<script src="app.js" defer></script>
+</body>
+</html>
