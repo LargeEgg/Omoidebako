@@ -227,20 +227,14 @@
     </div>
 
     <div class="settings-section">
-      <h3>Import from Mihon / Tachiyomi</h3>
-      <div class="data-actions">
-        <button class="btn btn-ghost" id="mihonBtn">Choose a .tachibk backup</button>
-        <input type="file" id="mihonFile" accept=".tachibk,.gz,.proto.gz,application/octet-stream,application/gzip" style="display:none" />
-        <button class="btn btn-ghost" id="enrichBtn">Fetch covers &amp; details</button>
-      </div>
-      <p class="settings-hint">Backups bring your categories across as folders and keep your reading position. Run "Fetch covers &amp; details" afterwards to pull artwork, tags and chapter totals from MyAnimeList.</p>
-    </div>
-
-    <div class="settings-section">
       <h3>Data</h3>
       <div class="data-actions">
         <button class="btn btn-ghost" id="exportBtn">Export JSON</button>
         <button class="btn btn-ghost" id="importBtn">Import JSON</button>
+        <button class="btn btn-ghost" id="mihonBtn">Import .tachibk</button>
+        <input type="file" id="mihonFile" accept=".tachibk,.gz,.proto.gz,application/octet-stream,application/gzip" style="display:none" />
+        <button class="btn btn-ghost" id="enrichBtn">Fetch covers &amp; details</button>
+      </div>
         <input type="file" id="importFile" accept="application/json" style="display:none" />
         <button class="btn btn-ghost" id="signOutBtn">Sign out</button>
       </div>
