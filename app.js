@@ -255,43 +255,168 @@ function escapeHtml(s) {
 function escapeAttr(s) { return escapeHtml(s).replace(/'/g, "&#39;"); }
 
 // ---------------------------------------------------------------------------
-// Search (Jikan API — free, no key required)
+// Search — sweeps several free, keyless APIs in parallel and shows each
+// source in its own section, so one flaky/down API doesn't block the rest.
 // ---------------------------------------------------------------------------
+
+// Normalized shape every fetcher returns:
+// { source, sourceName, extId, malId, title, image, type, year, units }
+
+async function fetchJikan(query, mediaType) {
+  const endpoint = mediaType === "anime" ? "anime" : "manga";
+  const res = await fetch(`https://api.jikan.moe/v4/${endpoint}?q=${encodeURIComponent(query)}&limit=8&sfw`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  return (json.data || []).map((it) => ({
+    source: "jikan",
+    sourceName: "MyAnimeList (Jikan)",
+    extId: "jikan-" + it.mal_id,
+    malId: it.mal_id ?? null,
+    title: it.title,
+    image: it.images?.jpg?.image_url || "",
+    type: it.type || null,
+    year: mediaType === "anime" ? (it.year || null) : (it.published?.prop?.from?.year || null),
+    units: mediaType === "anime" ? (it.episodes || null) : (it.chapters || null),
+  }));
+}
+
+async function fetchAniList(query, mediaType) {
+  const gql = `query ($search: String, $type: MediaType) {
+    Page(perPage: 8) {
+      media(search: $search, type: $type) {
+        id title { romaji english } coverImage { large }
+        format episodes chapters startDate { year }
+      }
+    }
+  }`;
+  const res = await fetch("https://graphql.anilist.co", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ query: gql, variables: { search: query, type: mediaType === "anime" ? "ANIME" : "MANGA" } }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  if (json.errors?.length) throw new Error(json.errors[0].message || "AniList error");
+  const media = json.data?.Page?.media || [];
+  return media.map((it) => ({
+    source: "anilist",
+    sourceName: "AniList",
+    extId: "anilist-" + it.id,
+    malId: null,
+    title: it.title?.english || it.title?.romaji || "Untitled",
+    image: it.coverImage?.large || "",
+    type: it.format || null,
+    year: it.startDate?.year || null,
+    units: mediaType === "anime" ? (it.episodes || null) : (it.chapters || null),
+  }));
+}
+
+async function fetchKitsu(query, mediaType) {
+  const endpoint = mediaType === "anime" ? "anime" : "manga";
+  const res = await fetch(`https://kitsu.io/api/edge/${endpoint}?filter[text]=${encodeURIComponent(query)}&page[limit]=8`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  return (json.data || []).map((it) => {
+    const a = it.attributes || {};
+    return {
+      source: "kitsu",
+      sourceName: "Kitsu",
+      extId: "kitsu-" + it.id,
+      malId: null,
+      title: a.canonicalTitle || a.titles?.en || a.titles?.en_jp || "Untitled",
+      image: a.posterImage?.small || a.posterImage?.medium || "",
+      type: a.subtype || null,
+      year: a.startDate ? Number(String(a.startDate).slice(0, 4)) : null,
+      units: mediaType === "anime" ? (a.episodeCount || null) : (a.chapterCount || null),
+    };
+  });
+}
+
+async function fetchMangaDex(query) {
+  const res = await fetch(
+    `https://api.mangadex.org/manga?title=${encodeURIComponent(query)}&limit=8&includes[]=cover_art`
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  return (json.data || []).map((it) => {
+    const attrs = it.attributes || {};
+    const titles = attrs.title || {};
+    const title = titles.en || Object.values(titles)[0] || Object.values(attrs.altTitles?.[0] || {})[0] || "Untitled";
+    const coverRel = (it.relationships || []).find((r) => r.type === "cover_art");
+    const image = coverRel?.attributes?.fileName
+      ? `https://uploads.mangadex.org/covers/${it.id}/${coverRel.attributes.fileName}.256.jpg`
+      : "";
+    return {
+      source: "mangadex",
+      sourceName: "MangaDex",
+      extId: "mangadex-" + it.id,
+      malId: null,
+      title,
+      image,
+      type: "Manga",
+      year: attrs.year || null,
+      units: attrs.lastChapter ? Number(attrs.lastChapter) || null : null,
+    };
+  });
+}
+
+const SEARCH_SOURCES = {
+  anime: [fetchJikan, fetchAniList, fetchKitsu],
+  manga: [fetchJikan, fetchAniList, fetchKitsu, fetchMangaDex],
+};
+
+let searchResultIndex = {}; // extId -> normalized item, for click lookups
+
 async function runSearch(query) {
   const resultsEl = $("searchResults");
   resultsEl.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:8px;">Searching...</p>';
-  try {
-    const endpoint = state.mediaType === "anime" ? "anime" : "manga";
-    const res = await fetch(
-      `https://api.jikan.moe/v4/${endpoint}?q=${encodeURIComponent(query)}&limit=8&sfw`
-    );
-    if (!res.ok) throw new Error("Search failed (rate limited? try again in a moment)");
-    const json = await res.json();
-    const items = json.data || [];
-    if (items.length === 0) {
-      resultsEl.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:8px;">No results.</p>';
-      return;
-    }
-    resultsEl.innerHTML = items.map((it, i) => {
-      const img = it.images?.jpg?.image_url || "";
-      const meta = state.mediaType === "anime"
-        ? [it.type, it.episodes ? it.episodes + " eps" : null, it.year].filter(Boolean).join(" · ")
-        : [it.type, it.chapters ? it.chapters + " ch" : null, it.published?.prop?.from?.year].filter(Boolean).join(" · ");
-      return `<div class="result-row" data-index="${i}">
-        <img src="${escapeAttr(img)}" alt="" />
+
+  const fetchers = SEARCH_SOURCES[state.mediaType];
+  const settled = await Promise.allSettled(fetchers.map((fn) => fn(query, state.mediaType)));
+
+  const sections = settled
+    .map((outcome) => (outcome.status === "fulfilled" ? outcome.value : []))
+    .filter((items) => items.length > 0);
+  const failedCount = settled.filter((o) => o.status === "rejected").length;
+
+  renderSearchSections(sections, failedCount, settled.length);
+}
+
+function renderSearchSections(sections, failedCount, totalCount) {
+  const resultsEl = $("searchResults");
+  searchResultIndex = {};
+
+  if (sections.length === 0) {
+    resultsEl.innerHTML =
+      failedCount === totalCount
+        ? '<p style="color:var(--red);font-size:13px;padding:8px;">All sources failed to respond. Try again in a moment.</p>'
+        : '<p style="color:var(--muted);font-size:13px;padding:8px;">No results.</p>';
+    return;
+  }
+
+  resultsEl.innerHTML = sections.map((items) => {
+    const rows = items.map((it) => {
+      searchResultIndex[it.extId] = it;
+      const meta = [it.type, it.units ? it.units + (state.mediaType === "anime" ? " eps" : " ch") : null, it.year]
+        .filter(Boolean).join(" · ");
+      return `<div class="result-row" data-ext-id="${escapeAttr(it.extId)}">
+        <img src="${escapeAttr(it.image)}" alt="" />
         <div><p class="r-title">${escapeHtml(it.title)}</p><p class="r-meta">${escapeHtml(meta)}</p></div>
       </div>`;
     }).join("");
+    return `<div class="result-section">
+      <p class="result-section-title">${escapeHtml(items[0].sourceName)}</p>
+      ${rows}
+    </div>`;
+  }).join("") + (failedCount > 0
+    ? `<p class="result-source-note">${failedCount} of ${totalCount} sources didn't respond.</p>`
+    : "");
 
-    resultsEl.querySelectorAll(".result-row").forEach((row) => {
-      row.addEventListener("click", () => {
-        const item = items[Number(row.dataset.index)];
-        pickSearchResult(item);
-      });
+  resultsEl.querySelectorAll(".result-row").forEach((row) => {
+    row.addEventListener("click", () => {
+      pickSearchResult(searchResultIndex[row.dataset.extId]);
     });
-  } catch (err) {
-    resultsEl.innerHTML = `<p style="color:var(--red);font-size:13px;padding:8px;">${escapeHtml(err.message)}</p>`;
-  }
+  });
 }
 
 function openSearchModal() {
@@ -302,21 +427,20 @@ function openSearchModal() {
 }
 
 function pickSearchResult(item) {
+  if (!item) return;
   $("searchOverlay").classList.remove("visible");
   state.editingId = null;
   state.pendingResult = item;
 
-  const totalUnits = state.mediaType === "anime" ? item.episodes : item.chapters;
-
   $("entryModalTitle").textContent = "Add to your shelf";
-  $("entryImg").src = item.images?.jpg?.image_url || "";
+  $("entryImg").src = item.image || "";
   $("entryTitle").textContent = item.title;
-  $("entryMeta").textContent = [item.type, item.year || item.published?.prop?.from?.year].filter(Boolean).join(" · ");
+  $("entryMeta").textContent = [item.sourceName, item.type, item.year].filter(Boolean).join(" · ");
   $("entryStatus").value = "plan";
   $("entryScore").value = "";
   $("entryProgress").value = 0;
-  $("entryTotal").value = totalUnits || "";
-  $("entryTotal").disabled = !!totalUnits;
+  $("entryTotal").value = item.units || "";
+  $("entryTotal").disabled = !!item.units;
   $("entryNotes").value = "";
   $("deleteEntryBtn").style.display = "none";
 
@@ -375,9 +499,9 @@ async function saveEntry() {
       const { error } = await state.supabase.from("entries").insert({
         user_id: state.session.user.id,
         media_type: state.mediaType,
-        mal_id: item.mal_id,
+        mal_id: item.malId,
         title: item.title,
-        image_url: item.images?.jpg?.image_url || null,
+        image_url: item.image || null,
         status, score, progress, total_units, notes,
       });
       if (error) throw error;
