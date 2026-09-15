@@ -3,8 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Omoidebako — My Anime & Manga Log</title>
-<meta name="description" content="A personal, portable log of every anime and manga you've watched or read." />
+<title>Omoidebako</title>
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#000000" />
 <link rel="icon" href="icon-192.png" />
@@ -22,7 +21,6 @@
     <div class="wordmark">
       <h1>OMOIDE<span>BAKO</span></h1>
       <div class="rule"></div>
-      <p class="auth-sub">Your personal anime &amp; manga log. Sign in to sync it across every device.</p>
     </div>
     <div class="auth-card holo" style="--glow:var(--accent)">
       <span class="bracket tl"></span><span class="bracket br"></span>
@@ -185,7 +183,10 @@
     </div>
 
     <div class="field">
-      <label for="entryTags">Tags (comma separated)</label>
+      <div class="label-row">
+        <label for="entryTags">Tags (comma separated)</label>
+        <button type="button" class="mini-btn" id="refetchTagsBtn">⟳ from source</button>
+      </div>
       <input id="entryTags" type="text" placeholder="mecha, slice-of-life, comfort rewatch" />
     </div>
 
@@ -211,7 +212,6 @@
       <h3>Theme</h3>
       <div class="theme-row"><span class="type-label">Anime</span><div class="swatches" data-theme-target="anime" id="swatchesAnime"></div></div>
       <div class="theme-row"><span class="type-label">Manga</span><div class="swatches" data-theme-target="manga" id="swatchesManga"></div></div>
-      <p class="settings-hint">Hidden trackers: hover a status in the sidebar and click the eye to hide or bring it back.</p>
     </div>
 
     <div class="settings-section">
@@ -226,25 +226,71 @@
   </div>
 </div>
 
-<!-- ---------- Detail overlay ---------- -->
-<div class="overlay" id="detailOverlay">
-  <div class="modal holo" id="detailPanel" style="--glow:var(--accent); max-width:420px;">
+<!-- ---------- Detail panel ---------- -->
+<div class="overlay detail-overlay" id="detailOverlay">
+  <div class="detail-panel holo" id="detailPanel" style="--glow:var(--accent)">
     <span class="bracket tl"></span><span class="bracket br"></span>
-    <div class="modal-header">
-      <h2 class="detail-kicker" id="detailKicker">ENTRY</h2>
-      <button class="icon-btn" id="closeDetail">&times;</button>
+
+    <header class="detail-hero">
+      <div class="detail-hero-bg" id="detailHeroBg"></div>
+      <div class="detail-hero-veil"></div>
+      <button class="detail-close" id="closeDetail" title="Close">&times;</button>
+      <div class="detail-hero-inner">
+        <div class="detail-cover" id="detailCover"></div>
+        <div class="detail-headline">
+          <p class="detail-kicker" id="detailKicker">ENTRY</p>
+          <h2 class="detail-title" id="detailTitle"></h2>
+          <p class="detail-alt" id="detailAlt"></p>
+          <div class="detail-chips" id="detailChips"></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="detail-body">
+      <div class="detail-main">
+        <section class="d-block">
+          <h4>Progress</h4>
+          <div class="prog-wrap">
+            <div class="prog-readout">
+              <b id="progNow">0</b><span id="progTotal"></span>
+              <em id="progUnit">episodes</em>
+            </div>
+            <div class="prog-buttons">
+              <button class="icon-btn" id="progMinus" title="Back one">−</button>
+              <button class="icon-btn" id="progPlus" title="Forward one">+</button>
+              <button class="btn btn-ghost" id="progComplete">Mark complete</button>
+            </div>
+          </div>
+          <div class="prog-bar"><div id="progFill"></div></div>
+          <p class="prog-pct" id="progPct"></p>
+        </section>
+
+        <section class="d-block">
+          <h4>Synopsis</h4>
+          <p class="detail-synopsis" id="detailSynopsis"></p>
+        </section>
+
+        <section class="d-block">
+          <h4>My notes</h4>
+          <p class="detail-notes" id="detailNotes"></p>
+        </section>
+
+        <section class="d-block">
+          <h4>Tags</h4>
+          <div class="detail-tags" id="detailTags"></div>
+        </section>
+      </div>
+
+      <aside class="detail-side">
+        <div class="stat-grid" id="detailStatGrid"></div>
+        <div class="detail-facts" id="detailFacts"></div>
+        <div class="detail-links" id="detailLinks"></div>
+        <div class="detail-actions">
+          <button class="btn btn-glow" id="detailEditBtn">Edit entry</button>
+          <button class="btn btn-ghost" id="detailDeleteBtn">Remove from shelf</button>
+        </div>
+      </aside>
     </div>
-    <div class="detail-cover" id="detailCover"></div>
-    <div class="detail-title" id="detailTitle"></div>
-    <div class="detail-sub" id="detailSub"></div>
-    <div class="detail-stats">
-      <div><b id="detailProgress">—</b>Progress</div>
-      <div><b id="detailScore">—</b>Score</div>
-      <div><b id="detailStatus">—</b>Status</div>
-    </div>
-    <div class="detail-tags" id="detailTags"></div>
-    <div class="detail-links" id="detailLinks"></div>
-    <button class="btn btn-glow" id="detailEditBtn" style="width:100%; margin-top:14px;">Edit entry</button>
   </div>
 </div>
 
